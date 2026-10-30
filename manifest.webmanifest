@@ -1,0 +1,16 @@
+{
+  "name": "Project Pages",
+  "short_name": "Pages",
+  "description": "Weekly 12×12 scrapbook pages, made and kept on this phone.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ECE9E5",
+  "theme_color": "#ECE9E5",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
