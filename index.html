@@ -82,7 +82,7 @@ select,input[type=text],textarea{background:var(--sunk);border:1px solid var(--l
 .stage canvas{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15),0 8px 24px rgba(0,0,0,.08);border-radius:2px;touch-action:none;display:block}
 .dock{flex:1;display:flex;flex-direction:column;min-height:0;gap:8px;padding-top:8px;padding-bottom:10px}
 .tabs{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
-.tabs button{flex:1;border:0;background:transparent;border-radius:999px;min-height:40px;padding:6px 2px;font-size:14px;font-weight:600;color:var(--muted)}
+.tabs button{flex:1;min-width:0;border:0;background:transparent;border-radius:999px;min-height:40px;padding:6px 1px;font-size:12.5px;font-weight:600;color:var(--muted)}
 .tabs button[aria-selected="true"]{background:var(--ink);color:var(--surface)}
 .panel{flex:1;min-height:170px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px;overflow:auto;-webkit-overflow-scrolling:touch}
 .hint{font-size:14px;color:var(--muted);margin:0 0 10px}
@@ -104,7 +104,7 @@ select,input[type=text],textarea{background:var(--sunk);border:1px solid var(--l
 .ph{flex:none;width:84px;height:84px;border-radius:10px;overflow:hidden;position:relative;border:0;padding:0;background:var(--sunk);touch-action:pan-x}
 .ph img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;-webkit-user-drag:none;user-select:none;-webkit-touch-callout:none}
 .ph.used img{opacity:.45}
-.ph .badge{position:absolute;left:4px;bottom:4px;background:var(--ink);color:var(--surface);font-size:11px;border-radius:999px;padding:1px 7px}
+.ph .badge{position:absolute;left:4px;bottom:4px;white-space:nowrap;background:var(--ink);color:var(--surface);font-size:11px;border-radius:999px;padding:1px 7px}
 .ph[aria-pressed="true"]{outline:4px solid var(--week);outline-offset:-4px}
 .ph .x{position:absolute;top:4px;right:4px;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:18px;line-height:32px;text-align:center}
 .addph{flex:none;width:84px;height:84px;border-radius:10px;border:1.5px dashed var(--line);background:transparent;color:var(--muted);font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
@@ -133,6 +133,21 @@ input[type=range]{accent-color:var(--ink);width:100%;height:32px}
 .overlay .box p{color:var(--muted);margin:0 0 14px}
 .prog{height:8px;background:var(--sunk);border-radius:8px;overflow:hidden;margin:12px 0}
 .prog i{display:block;height:100%;background:var(--week);transition:width .2s}
+.wkbadge{position:absolute;left:4px;top:4px;background:#FFFFFF;color:#23201E;font-size:11px;font-weight:600;border-radius:999px;padding:1px 7px}
+.stickers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.stk{position:relative;border:1px solid var(--line);background:var(--sunk);border-radius:12px;aspect-ratio:1;padding:6px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.stk canvas,.stk img{max-width:100%;max-height:100%;display:block;object-fit:contain}
+.stk.add{border-style:dashed;background:transparent;font-size:12px;color:var(--muted);line-height:1.2}
+.stk .x{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:16px;line-height:28px;text-align:center}
+.seg button:disabled{opacity:.4}
+.seg{flex-wrap:wrap}
+.trace{position:fixed;inset:0;background:#141210;color:#F1EDE7;z-index:80;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top,0px)) 14px calc(10px + env(safe-area-inset-bottom,0px))}
+.trace .tt{margin:4px 0 10px;font-size:15px}
+.trace .tc{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.trace canvas{touch-action:none;display:block}
+.trace .bar{display:flex;gap:10px;justify-content:flex-end;padding-top:12px}
+.trace .btn{background:#F1EDE7;color:#23201E}
+.trace .btn.ghost{background:transparent;color:#F1EDE7;border-color:rgba(255,255,255,.4)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>

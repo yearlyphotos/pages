@@ -1,5 +1,5 @@
 /* Project Pages offline cache. Change VERSION whenever you upload new app files. */
-const VERSION = "v1";
+const VERSION = "v2";
 const CACHE = "project-pages-" + VERSION;
 const FILES = [
   "./", "./index.html", "./app.js", "./manifest.webmanifest",
