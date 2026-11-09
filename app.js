@@ -95,6 +95,14 @@ const RAW=[
  {id:"half",name:"Tall left",cells:[[0,0,6,12],[6,0,6,6],[6,6,3,6],[9,6,3,6]],tile:[9,6]},
  {id:"g4",name:"Four squares",cells:[[0,0,6,6],[6,0,6,6],[0,6,6,6],[6,6,6,6]],tile:[6,0]},
  {id:"g16",name:"Sixteen",cells:[0,1,2,3].flatMap(r=>[0,1,2,3].map(c=>[c*3,r*3,3,3])),tile:[3,3]},
+ {id:"w3",name:"Wide middle top and bottom",cells:[[0,0,3,4],[3,0,6,4],[9,0,3,4],[0,4,3,4],[3,4,3,4],[6,4,3,4],[9,4,3,4],[0,8,3,4],[3,8,6,4],[9,8,3,4]],tile:[3,4]},
+ {id:"x4",name:"Tall sides, small frame",cells:[[0,0,4,3],[4,0,4,3],[8,0,4,3],[0,3,4,6],[4,3,4,3],[4,6,4,3],[8,3,4,6],[0,9,4,3],[4,9,4,3],[8,9,4,3]],tile:[4,3]},
+ {id:"big4",name:"Big left, four right",cells:[[0,0,8,12],[8,0,4,3],[8,3,4,3],[8,6,4,3],[8,9,4,3]],tile:[8,0]},
+ {id:"m5",name:"Big top left",cells:[[0,0,6,8],[6,0,6,4],[6,4,3,4],[9,4,3,4],[0,8,6,4],[6,8,6,4]],tile:[6,4]},
+ {id:"m6",name:"Wide top right",cells:[[0,0,4,6],[4,0,8,6],[0,6,4,6],[4,6,4,3],[4,9,4,3],[8,6,4,6]],tile:[4,6]},
+ {id:"ring",name:"Big middle, frame of twelve",cells:[[0,0,3,3],[3,0,3,3],[6,0,3,3],[9,0,3,3],[0,3,3,3],[3,3,6,6],[9,3,3,3],[0,6,3,3],[9,6,3,3],[0,9,3,3],[3,9,3,3],[6,9,3,3],[9,9,3,3]],tile:[3,0]},
+ {id:"c14",name:"Tall sides, eight middle",cells:[[0,0,3,4],[0,4,3,4],[0,8,3,4],[9,0,3,4],[9,4,3,4],[9,8,3,4],...[0,1,2,3].flatMap(r=>[[3,r*3,3,3],[6,r*3,3,3]])],tile:[3,3]},
+ {id:"r14",name:"Three, eight, three",cells:[[0,0,4,3],[4,0,4,3],[8,0,4,3],...[3,6].flatMap(y=>[0,3,6,9].map(x=>[x,y,3,3])),[0,9,4,3],[4,9,4,3],[8,9,4,3]],tile:[3,3]},
  {id:"two",name:"Two tall",cells:[[0,0,6,12],[6,0,6,12]],tile:null},
  {id:"one",name:"Full page",cells:[[0,0,12,12]],tile:null},
 ];
@@ -134,8 +142,10 @@ async function ensureImages(pages){const ids=new Set();for(const p of pages){for
   await Promise.all([...ids].map(id=>loadImg(id).catch(()=>null)))}
 async function scaleTo(bmp,max,q){const k=Math.min(1,max/Math.max(bmp.width,bmp.height));const c=cv(bmp.width*k,bmp.height*k);
   c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);const b=await toBlob(c,"image/jpeg",q);return{blob:b,w:c.width,h:c.height}}
-async function storePhoto(f){const t=(await photoDate(f))||f.lastModified||null;const bmp=await createImageBitmap(f,{imageOrientation:"from-image"});const big=await scaleTo(bmp,2600,.88);const sm=await scaleTo(bmp,360,.8);bmp.close?.();
-  const id=uid();await DB.put("photos",id,{blob:big.blob,thumb:sm.blob,w:big.w,h:big.h,crc:await crcBlob(big.blob),type:"image/jpeg"});return{id,w:big.w,h:big.h,t}}
+async function storePhoto(f,opt={}){const t=(await photoDate(f))||opt.t||f.lastModified||null;let bmp=await createImageBitmap(f,{imageOrientation:"from-image"});const rot=((opt.rot||0)%4+4)%4;
+  if(rot){const q=rot%2?cv(bmp.height,bmp.width):cv(bmp.width,bmp.height),x=q.getContext("2d");x.translate(q.width/2,q.height/2);x.rotate(rot*Math.PI/2);x.drawImage(bmp,-bmp.width/2,-bmp.height/2);bmp.close?.();bmp=q}
+  const big=await scaleTo(bmp,2600,.88);const sm=await scaleTo(bmp,360,.8);bmp.close?.();
+  const id=uid();await DB.put("photos",id,{blob:big.blob,thumb:sm.blob,w:big.w,h:big.h,crc:await crcBlob(big.blob),type:"image/jpeg"});return{id,w:big.w,h:big.h,t,...(opt.plh?{plh:opt.plh}:{})}}
 async function loadLibrary(){try{const l=await DB.get("meta","library");if(l)S.library={stickers:l.stickers||[],cards:l.cards||[]}}catch(e){}}
 async function saveLibrary(){S.dirtySinceBackup=true;try{await DB.put("meta","library",S.library)}catch(e){toast("Couldn't save. Your phone may be out of space.",5000)}}
 async function addCards(files){files=[...files];if(!files.length)return;await askPersist();let n=0;for(const f of files){toast(`Adding cards… ${n} of ${files.length}`,0);try{const ph=await storePhoto(f);delete ph.t;S.library.cards.push(ph);n++}catch(e){}}await saveLibrary();toast(`Added ${n} card${n===1?"":"s"}`);if(S.view==="edit")renderPanel()}
@@ -335,6 +345,41 @@ async function loadFile(file){let entries;try{entries=await readZip(file)}catch(
     pb.close();S.weeks=new Map((await DB.all("weeks")).map(w=>[keyOf(w.year,w.week),migrate(w)]));S.dirtySinceBackup=false;await DB.put("meta","dirty",false);S.view="home";render();toast("Project loaded",3000)}
   catch(e){pb.close();toast("Loading stopped partway. Try loading the backup again.",5000)}}
 
+
+/* ---------- import pages from the Project Life app (.plpage) ---------- */
+const g9cells=[0,1,2].flatMap(r=>[0,1,2].map(c=>[c*4,r*4,4,4]));
+const PL_DESIGNS={
+  "Design A":{layout:"p8",cells:[[0,0,6,4],[6,0,6,4],[0,4,3,4],[3,4,3,4],[6,4,3,4],[9,4,3,4],[0,8,6,4],[6,8,6,4]]},
+  "Design D":{layout:"t4",cells:[[0,0,4,6],[0,6,4,6],[4,0,4,3],[4,3,4,3],[4,6,4,3],[4,9,4,3],[8,0,4,6],[8,6,4,6]]},
+  "Design P":{layout:"g9",cells:g9cells}};
+function plCrop(rect,ph,ucx,ucy){const s=Math.max(rect.w/ph.w,rect.h/ph.h);const vw=rect.w/s,vh=rect.h/s;
+  const fx=ph.w>vw+0.5?clamp((ucx*ph.w-vw/2)/(ph.w-vw),0,1):.5,fy=ph.h>vh+0.5?clamp((ucy*ph.h-vh/2)/(ph.h-vh),0,1):.5;return{fx,fy}}
+async function importPL(files){files=[...files];if(!files.length)return;await askPersist();const pb=progressBox("Importing Project Life pages");const done=[],unknown=[],failed=[];
+  for(let fi=0;fi<files.length;fi++){const f=files[fi];pb.set(fi/files.length,`Page ${fi+1} of ${files.length}`);
+    try{const entries=await readZip(f);const byName=new Map(entries.map(e=>[e.name,e]));const pj=byName.get("page.json");if(!pj)throw new Error("no page");
+      const page=JSON.parse(await(await pj.blob()).text());const when=new Date(String(page.event||page.create).replace(" ","T")+"Z");const t=isNaN(when)?Date.now():when.getTime();
+      let{y,w}=isoWeekOf(new Date(t));const prev=S.weeks.get(keyOf(y,w-1)),next=S.weeks.get(keyOf(y,w+1));if(prev&&prev.pair===1)w--;else if(next&&next.pair===-1)w++;
+      const k=keyOf(y,w);if(!S.weeks.has(k))S.weeks.set(k,newWeek(y,w));const wk=S.weeks.get(k);
+      const pockets=Object.values(page.pockets||{}).filter(p=>p.pocketcontent&&p.pocketcontent.imagehash).sort((a,b)=>a.pocketnum-b.pocketnum);
+      const placed=[];let n=0;
+      for(const p of pockets){const c=p.pocketcontent;n++;pb.set((fi+n/(pockets.length+1))/files.length);let ph=wk.photos.find(x=>x.plh===c.imagehash);
+        if(!ph){const e=byName.get(`images/${c.imagehash}.jpg`)||byName.get(`images/${c.imagehash}.png`)||entries.find(x=>x.name.startsWith(`images/${c.imagehash}`));if(!e)continue;
+          ph=await storePhoto(await e.blob(),{t,rot:c.rotations||0,plh:c.imagehash});wk.photos.push(ph)}
+        placed.push({num:p.pocketnum,ph,c})}
+      wk.photos.sort((a,b)=>(a.t||0)-(b.t||0));
+      const design=PL_DESIGNS[page.layout];let layout,cellFor;
+      if(design){layout=design.layout;const L=LAYOUT[layout];cellFor=num=>{const r=design.cells[num];return r?L.cells.findIndex(q=>q[0]===r[0]&&q[1]===r[1]&&q[2]===r[2]&&q[3]===r[3]):-1}}
+      else{unknown.push(page.layout||"an unknown design");const need=Math.max(1,...placed.map(x=>x.num+1));layout=(RAW.find(L=>L.cells.length===need)||RAW.find(L=>L.cells.length>=need)||LAYOUT.g16).id;cellFor=num=>num}
+      const np=newPage(layout,false);np.pl=page.pageid||null;const R=slotRects(layout,false);
+      for(const x of placed){if(x.num<0)continue;const i=cellFor(x.num);if(i<0||i>=np.slots.length)continue;np.slots[i]={p:x.ph.id,...plCrop(R[i],x.ph,x.c.unitcenterx??.5,x.c.unitcentery??.5),z:1,split:null}}
+      let idx=wk.pages.findIndex(pg=>np.pl&&pg.pl===np.pl);
+      if(idx<0&&wk.pages.length===1&&!hasContent(wk))idx=0;
+      if(idx>=0){np.items=wk.pages[idx].items||[];wk.pages[idx]=np}else{wk.pages.push(np);idx=wk.pages.length-1}
+      await saveNow(wk);done.push(pageName(wk,idx))}
+    catch(e){failed.push(f.name)}}
+  pb.close();render();
+  let msg=done.length?`Imported ${done.join(", ")}.`:"Nothing was imported.";if(unknown.length)msg+=` ${unknown.length} page${unknown.length===1?" uses":"s use"} a design the app doesn't know yet, so check how the photos are arranged.`;if(failed.length)msg+=` ${failed.length} file${failed.length===1?"":"s"} couldn't be read.`;
+  toast(msg,6000)}
 /* ---------- export images ---------- */
 async function renderFull(wk,i,size=3600){await document.fonts.ready;await ensureImages([wk.pages[i]]);const c=cv(size,size);drawPage(c.getContext("2d"),size,wk,wk.pages[i]);
   const b=await toBlob(c,"image/jpeg",.92);c.width=c.height=1;return b}
@@ -372,7 +417,7 @@ function renderHome(){const y=S.year,n=weeksInYear(y);document.documentElement.s
     const wk=S.weeks.get(keyOf(y,w));const has=hasContent(wk);const waiting=wk&&!has&&wk.photos.length;const th=h("span",{class:"thumb"});
     if(has&&wk.thumb)th.append(h("img",{src:wk.thumb,alt:""}));else th.append(tileThumb(wk||newWeek(y,w),has?null:"#CFC9C2"));
     g.append(h("button",{class:"cell"+(has?"":" empty")+(y===now.y&&w===now.w?" now":""),onclick:()=>openWeek(y,w),"aria-label":`Week ${wk?numLabel(wk):w}`},th,
-      h("span",{class:"lab"},h("b",{},`Week ${wk?numLabel(wk):w}`),wk&&wk.pages.length>1&&has?` · ${wk.pages.length}`:"",waiting?` · ${wk.photos.length} new`:"")))}
+      h("span",{class:"lab"},h("b",{},`Week ${wk?numLabel(wk):w}`),wk&&wk.pages.length>1&&has?` · ${wk.pages.length} pages`:"",waiting?` · ${wk.photos.length} new`:"")))}
   const from=h("select",{id:"exFrom","aria-label":"From week"}),to=h("select",{id:"exTo","aria-label":"To week"});
   for(let w=1;w<=n;w++){from.append(h("option",{value:w},`Week ${w}`));to.append(h("option",{value:w},`Week ${w}`))}from.value=1;to.value=n;
   home.append(h("section",{class:"card"},h("h2",{},"Print files"),h("p",{},`Each page is a 12 × 12 inch image at 300 dpi (3600 × 3600 pixels), named in album order, like “${y} Week 16.jpg” and “${y} Week 16.2.jpg”.`),
@@ -382,6 +427,9 @@ function renderHome(){const y=S.year,n=weeksInYear(y);document.documentElement.s
     h("p",{},`Your pages and photos live only in this app on this phone. Save a backup now and then and keep it somewhere safe, such as Google Drive. Last backup: ${ago(S.lastBackup)}.`),
     h("div",{class:"stack"},h("button",{class:"btn wide",onclick:saveProject},"Save project"),h("button",{class:"btn ghost wide",onclick:()=>ld.click()},"Load project or a week")),ld,
     h("p",{class:"hint",style:"margin-top:10px"},"A saved week only replaces that one week. A full project replaces everything.")));
+  const plIn=h("input",{type:"file",multiple:true,hidden:true,id:"plIn",onchange:e=>{const fs=[...e.target.files].filter(f=>/\.(plpage|zip)$/i.test(f.name));e.target.value="";if(fs.length)importPL(fs);else toast("Pick .plpage files exported from the Project Life app.",4000)}});
+  home.append(h("section",{class:"card"},h("h2",{},"Pages from Project Life"),h("p",{},"Pick .plpage files exported from the Project Life app. Each page goes into the week of its date, with its photos, layout and cropping, so you can keep editing it here. Empty spots stay empty, so you can add the week tile or more photos."),
+    h("button",{class:"btn ghost wide",onclick:()=>plIn.click()},"Import Project Life pages"),plIn));
   home.append(h("section",{class:"card"},h("h2",{},"Week tile language"),h("p",{},"Used for every week unless you change it inside a week."),
     seg([["en","English: Week"],["de","Deutsch: Woche"]],S.settings.lang||"en",v=>{S.settings.lang=v;saveSettings();render()})));
   const fi=h("input",{type:"file",accept:".zip,.ttf,.otf",multiple:true,hidden:true,id:"fontIn",onchange:e=>{const fs=[...e.target.files];e.target.value="";addFontFiles(fs)}});
@@ -399,47 +447,52 @@ window.addEventListener("popstate",()=>{if(S.skipPop){S.skipPop=false;return}if(
 let cvs=null,ctx=null,ro=null;
 const TABS=[["layout","Layout"],["photos","Photos"],["tile","Week"],["text","Text"],["stickers","Stickers"],["save","Save"]];
 function renderEditor(){const wk=curWeek();document.documentElement.style.setProperty("--week",wk.color);
-  app.append(h("header",{class:"top"},h("button",{class:"iconbtn","aria-label":"Back to all weeks",onclick:()=>history.back()},"‹"),
-    h("div",{class:"grow"},h("h1",{},`Week ${numLabel(wk)}`),h("div",{class:"sub"},datesOf(wk))),
-    h("button",{class:"iconbtn",id:"undoBtn","aria-label":"Undo",disabled:!undoStack.length,onclick:undo},"↶ Undo")));
-  const ed=h("main",{class:"editor"});app.append(ed);
+  app.append(h("header",{class:"top slim"},h("button",{class:"iconbtn sm","aria-label":"Back to all weeks",onclick:()=>history.back()},"‹"),
+    h("div",{class:"grow"},h("h1",{},`Week ${numLabel(wk)}`),h("span",{class:"sub"},datesOf(wk))),
+    h("button",{class:"iconbtn sm",id:"undoBtn","aria-label":"Undo",title:"Undo",disabled:!undoStack.length,onclick:undo},"↶")));
+  const ed=h("main",{class:"editor"+(S.sheetUp?" up":"")});app.append(ed);
   const pages=h("div",{class:"pages","aria-label":"Pages this week"});
   wk.pages.forEach((p,i)=>pages.append(h("button",{class:"chip","aria-pressed":String(i===S.pageIdx),onclick:()=>{S.pageIdx=i;S.sel={tray:null,cell:null,mode:null,item:null};render()}},i?`${numLabel(wk)}.${i+1}`:`${numLabel(wk)}`)));
   pages.append(h("button",{class:"chip",onclick:()=>{wk.pages.push(newPage("g9",false));S.pageIdx=wk.pages.length-1;commit(wk);render()}},"+ Page"));ed.append(pages);
   const stage=h("div",{class:"stage",id:"stage"});ed.append(stage);
   cvs=h("canvas",{"aria-label":"Page preview. Tap a spot to place or edit a photo."});ctx=cvs.getContext("2d");stage.append(cvs);bindCanvas();
-  const dock=h("div",{class:"dock"});ed.append(dock);dock.append(h("div",{id:"slotbar"}));
-  dock.append(h("div",{class:"tabs",role:"tablist",id:"tabs"}),h("section",{class:"panel",id:"panel"}));renderTabs();renderPanel();renderSlotbar();
+  const dock=h("div",{class:"dock"});ed.append(dock);
+  const handle=h("button",{class:"handle","aria-label":S.sheetUp?"Show more of the page":"Show more of the panel"},h("i"));bindHandle(handle);
+  dock.append(h("div",{class:"tabs",role:"tablist",id:"tabs"}),handle,h("section",{class:"panel",id:"panel"}));renderTabs();renderPanel();
   ro?.disconnect();ro=new ResizeObserver(sizeCanvas);ro.observe(stage);sizeCanvas()}
-function renderTabs(){const t=$("#tabs");if(!t)return;t.innerHTML="";for(const[k,l]of TABS)t.append(h("button",{role:"tab","aria-selected":String(S.tab===k),onclick:()=>setTab(k)},l))}
+function setSheet(up){if(!!S.sheetUp===up)return;S.sheetUp=up;const ed=$(".editor");if(ed)ed.classList.toggle("up",up);const hd=$(".handle");if(hd)hd.setAttribute("aria-label",up?"Show more of the page":"Show more of the panel")}
+function bindHandle(b){let y0=null,moved=false;b.addEventListener("pointerdown",e=>{y0=e.clientY;moved=false;try{b.setPointerCapture(e.pointerId)}catch(x){}});
+  b.addEventListener("pointermove",e=>{if(y0==null)return;const dy=e.clientY-y0;if(Math.abs(dy)>24&&!moved){moved=true;setSheet(dy<0)}});
+  b.addEventListener("pointerup",()=>{if(y0!=null&&!moved)setSheet(!S.sheetUp);y0=null})}
+function renderTabs(){const t=$("#tabs");if(!t)return;t.innerHTML="";t.className="tabs";const sel=S.sel,wk=curWeek(),pg=curPage();
+  const tool=(label,fn,on,aria)=>h("button",{class:"tool"+(on?" on":""),onclick:fn,"aria-label":aria||label},label);
+  if(sel.mode==="swap"||sel.mode==="tile"){t.className="tabs tools";t.append(h("span",{class:"msg"},sel.mode==="swap"?"Tap the spot to swap with":"Tap a spot for the week tile"),tool("Cancel",clearSel));return}
+  const c=sel.cell!=null&&cellByKey(sel.cell);
+  if(sel.mode==="split"&&c){t.className="tabs tools";const cur=pg.slots[c.i].split;t.append(h("span",{class:"msg"},"Split:"));
+    for(const[v,l,a]of[[null,"Whole","Whole spot"],["h2","2 side by side"],["v2","2 stacked"],["g4","4"]])t.append(tool(l,()=>setSplit(c.i,v),cur===v,a));t.append(tool("✕",clearSel,false,"Close"));return}
+  if(c){t.className="tabs tools";
+    if(S.slider&&S.sliderKey===sel.cell){const isTile=c.tile;const k=isTile?PART_KEYS[S.tilePart||"n"][2]:null;const val=isTile?adjOf(wk)[k]:(c.ref.z||1);
+      t.append(h("span",{class:"msg"},isTile?"Size":"Zoom"),h("input",{type:"range",class:"rng",min:isTile?"0.5":"1",max:isTile?"1.8":"2.5",step:"0.01",value:String(val),"aria-label":isTile?"Size":"Zoom",
+        oninput:e=>{if(isTile)wk.tileAdj={...adjOf(wk),[k]:+e.target.value};else c.ref.z=+e.target.value;drawStage()},onchange:()=>commit(wk)}),tool("Done",()=>{S.slider=false;renderTabs()},true));return}
+    const openSlider=()=>{S.slider=true;S.sliderKey=sel.cell;renderTabs()};
+    if(c.tile){const P=S.tilePart||"n";
+      for(const[v,l]of[["n","Number"],["w",langOf(wk)==="de"?"Woche":"Week"],["d","Dates"]])t.append(tool(l,()=>{S.tilePart=v;renderTabs();drawStage()},P===v));
+      t.append(tool("Size",openSlider),tool("Reset",()=>{wk.tileAdj=null;commit(wk);drawStage()}),tool("Move",()=>{S.sel.mode="swap";renderTabs()}),tool("Hide",()=>{pg.tile=null;commit(wk);clearSel();renderPanel()},false,"Hide the week tile"),tool("✕",clearSel,false,"Close"));return}
+    if(c.ref.p)t.append(tool("Zoom",openSlider));
+    t.append(tool("Split",()=>{S.sel.mode="split";renderTabs()}));
+    if(c.ref.p)t.append(tool("Swap",()=>{S.sel.mode="swap";renderTabs()}));
+    if(c.k==null)t.append(tool("Tile here",()=>moveTile(c.i)));
+    if(c.ref.p)t.append(tool("Remove",()=>{c.ref.p=null;commit(wk);clearSel();renderPanel()}));
+    t.append(tool("✕",clearSel,false,"Close"));return}
+  for(const[k,l]of TABS)t.append(h("button",{role:"tab","aria-selected":String(S.tab===k),onclick:()=>setTab(k)},l))}
 function setTab(k){S.tab=k;S.pickCut=false;if(k!=="text"&&k!=="stickers")S.sel.item=null;else{const it=curPage().items.find(i=>i.id===S.sel.item);if(it&&((k==="text")!==(it.type==="text")))S.sel.item=null}renderTabs();renderPanel();drawStage()}
 function sizeCanvas(){const st=$("#stage");if(!st||!cvs)return;const r=st.getBoundingClientRect();const css=Math.max(160,Math.floor(Math.min(r.width,r.height)));const dpr=Math.min(3,window.devicePixelRatio||1);
   cvs.style.width=cvs.style.height=css+"px";const px=Math.round(css*dpr);if(cvs.width!==px){cvs.width=cvs.height=px}drawStage()}
 let raf=0;function drawStage(){if(!cvs||S.view!=="edit")return;cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>drawPage(ctx,cvs.width,curWeek(),curPage(),{preview:true}))}
 const cellByKey=key=>cellsOf(curPage()).find(c=>c.key===key);
 const PART_KEYS={n:["nx","ny","ns"],w:["wx","wy","ws"],d:["dx","dy","ds"]};
-function renderSlotbar(){const bar=$("#slotbar");if(!bar)return;bar.innerHTML="";const sel=S.sel,pg=curPage(),wk=curWeek();
-  if(sel.mode==="swap"){bar.append(h("div",{class:"slotbar"},h("span",{class:"t"},"Tap the spot to swap with"),h("button",{onclick:clearSel},"Cancel")));return}
-  if(sel.mode==="tile"){bar.append(h("div",{class:"slotbar"},h("span",{class:"t"},"Tap where the week tile should go"),h("button",{onclick:clearSel},"Cancel")));return}
-  if(sel.mode==="split"){const c=cellByKey(sel.cell);if(!c){clearSel();return}const cur=pg.slots[c.i].split;const b=h("div",{class:"slotbar"},h("span",{class:"t"},"Split this spot"));
-    for(const[v,l]of[[null,"Whole"],["h2","2 side by side"],["v2","2 stacked"],["g4","4"]])b.append(h("button",{class:cur===v?"on":"",onclick:()=>setSplit(c.i,v)},l));b.append(h("button",{onclick:clearSel,"aria-label":"Close"},"✕"));bar.append(b);return}
-  if(sel.cell==null)return;const c=cellByKey(sel.cell);if(!c){S.sel.cell=null;return}const b=h("div",{class:"slotbar"});
-  if(c.tile){const P=S.tilePart||"n";const A=adjOf(wk);const k=PART_KEYS[P][2];
-    b.append(h("div",{class:"seg dark"},[["n","Number"],["w",langOf(wk)==="de"?"Woche":"Week"],["d","Dates"]].map(([v,l])=>h("button",{"aria-pressed":String(P===v),onclick:()=>{S.tilePart=v;renderSlotbar();drawStage()}},l))),
-      h("label",{class:"zoom"},"Size",h("input",{type:"range",min:"0.5",max:"1.8",step:"0.01",value:String(A[k]),"aria-label":"Size",oninput:e=>{wk.tileAdj={...adjOf(wk),[k]:+e.target.value};drawStage()},onchange:()=>commit(wk)})),
-      h("span",{class:"t",style:"flex-basis:100%;margin:0"},"Drag the number, the word or the dates on the tile to move them."),
-      h("button",{onclick:()=>{wk.tileAdj=null;commit(wk);renderSlotbar();drawStage()}},"Reset"),
-      h("button",{onclick:()=>{S.sel.mode="swap";renderSlotbar()}},"Move tile"),
-      h("button",{onclick:()=>{pg.tile=null;commit(wk);clearSel();renderPanel()}},"Hide tile"),
-      h("button",{onclick:clearSel,"aria-label":"Close"},"✕"));bar.append(b);return}
-  if(c.ref.p){b.append(h("label",{class:"zoom"},"Zoom",h("input",{type:"range",min:"1",max:"2.5",step:"0.01",value:String(c.ref.z||1),"aria-label":"Zoom",oninput:e=>{c.ref.z=+e.target.value;drawStage()},onchange:()=>commit(wk)})))}
-  else b.append(h("span",{class:"t"},"Empty spot"));
-  b.append(h("button",{onclick:()=>{S.sel.mode="split";renderSlotbar()}},"Split"));
-  if(c.ref.p)b.append(h("button",{onclick:()=>{S.sel.mode="swap";renderSlotbar()}},"Swap"));
-  if(c.k==null)b.append(h("button",{onclick:()=>moveTile(c.i)},"Tile here"));
-  if(c.ref.p)b.append(h("button",{onclick:()=>{c.ref.p=null;commit(wk);clearSel();renderPanel()}},"Remove"));
-  b.append(h("button",{onclick:clearSel,"aria-label":"Close"},"✕"));bar.append(b)}
-function clearSel(){S.sel.cell=null;S.sel.mode=null;renderSlotbar();drawStage()}
+function renderSlotbar(){renderTabs()}
+function clearSel(){S.sel.cell=null;S.sel.mode=null;S.slider=false;renderTabs();drawStage()}
 function moveTile(i){const pg=curPage(),wk=curWeek();const old=pg.tile;if(old!=null&&old!==i){const a=pg.slots[old];pg.slots[old]=pg.slots[i];pg.slots[i]=a}pg.tile=i;S.sel.cell=null;S.sel.mode=null;commit(wk);renderSlotbar();renderPanel();drawStage()}
 function placePhoto(c,id){const wk=curWeek();if(c.tile)return toast("That spot holds the week tile. Swap it first.");Object.assign(c.ref,{p:id,fx:.5,fy:.5,z:1});S.sel.tray=null;commit(wk);renderPanel();refreshSuggest();drawStage()}
 function swapCells(a,b){const wk=curWeek();if(a.key===b.key)return;
@@ -464,7 +517,7 @@ function bindCanvas(){const ptrs=new Map();let g=null,ghost=null,timer=0;
   const stopTimer=()=>{clearTimeout(timer);timer=0};
   const startDrag=()=>{if(!g)return;const c=g.c;const gc=cv(84,84),gx=gc.getContext("2d");const im=c.ref&&imgReady.get(c.ref.p);if(im)drawCover(gx,im,0,0,84,84,c.ref);else drawTile(gx,0,0,84,84,curWeek());
     ghost=gc;gc.className="dragghost";gc.style.left=g.lx+"px";gc.style.top=g.ly+"px";document.body.append(gc);try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}g.kind="drag";S.sel.cell=null;renderSlotbar();drawStage()};
-  cvs.addEventListener("pointerdown",e=>{const p=pt(e);ptrs.set(e.pointerId,p);try{cvs.setPointerCapture(e.pointerId)}catch(x){}const pg=curPage(),wk=curWeek();stopTimer();
+  cvs.addEventListener("pointerdown",e=>{if(S.sheetUp&&!S.sel.tray){setSheet(false);return}const p=pt(e);ptrs.set(e.pointerId,p);try{cvs.setPointerCapture(e.pointerId)}catch(x){}const pg=curPage(),wk=curWeek();stopTimer();
     if(ptrs.size===2){const it=pg.items.find(i=>i.id===S.sel.item);if(it){const t=two();const q=itemPos(it,pg);it.a=null;it.x=q.x;it.y=q.y;g={kind:"pinch",it,d0:t.d,a0:t.a,s0:it.s,r0:it.r||0}}else g=null;ghost?.remove();ghost=null;S.drop=null;return}
     if(ptrs.size>2)return;
     if(S.sel.tray){const c=hitCell(p);if(c)placePhoto(c,S.sel.tray);else{S.sel.tray=null;renderPanel();drawStage()}g=null;return}
@@ -629,11 +682,13 @@ async function removeLibrary(kind,entry){const isCard=kind==="cards";
 function renderPanel(){const el=$("#panel");if(!el)return;const top=el.scrollTop;el.innerHTML="";const wk=curWeek(),pg=curPage();
   if(S.tab==="layout"){el.append(h("p",{class:"hint"},"Pick a layout. Photos you already placed move into the new spots. To put 2 or 4 small photos in one spot, tap the spot and choose Split."));
     const g=h("div",{class:"layouts"});for(const L of RAW){const b=h("button",{class:"lay","aria-pressed":String(pg.layout===L.id),"aria-label":L.name,onclick:()=>setLayout(L.id)});b.innerHTML=layoutSvg(L,pg.mirror);g.append(b)}
-    el.append(g,h("label",{class:"toggle",style:"margin-top:8px"},h("input",{type:"checkbox",id:"mirror",checked:pg.mirror,onchange:e=>{pg.mirror=e.target.checked;commit(wk);renderPanel();drawStage()}}),"Mirror left and right"))}
+    el.append(g,h("label",{class:"toggle",style:"margin-top:8px"},h("input",{type:"checkbox",id:"mirror",checked:pg.mirror,onchange:e=>{pg.mirror=e.target.checked;commit(wk);renderPanel();drawStage()}}),"Mirror left and right"),
+      h("div",{class:"lbl"},"More pages for this week"),h("p",{class:"hint"},`Extra pages get their own layout and no week tile, and still belong to week ${numLabel(wk)} (they're saved as ${numLabel(wk)}.2, ${numLabel(wk)}.3 and so on).`),
+      h("button",{class:"btn ghost wide",onclick:()=>{wk.pages.push(newPage("g9",false));S.pageIdx=wk.pages.length-1;S.sel={tray:null,cell:null,mode:null,item:null};commit(wk);render();toast(`Page ${numLabel(wk)}.${wk.pages.length} added`)}},"Add another page to this week"))}
   else if(S.tab==="photos"){const used=new Set();wk.pages.forEach(p=>cellsOf(p).forEach(c=>c.ref&&c.ref.p&&used.add(c.ref.p)));
     const input=h("input",{type:"file",accept:"image/*",multiple:true,hidden:true,id:"fileIn",onchange:e=>{const fs=[...e.target.files];e.target.value="";addPhotos(fs)}});
     const cardIn=h("input",{type:"file",accept:"image/*",multiple:true,hidden:true,id:"cardIn",onchange:e=>{const fs=[...e.target.files];e.target.value="";addCards(fs)}});
-    el.append(h("p",{class:"hint"},S.sel.tray?"Now tap a spot on the page. Spots that suit this shape are highlighted.":"Tap a photo, then tap a spot on the page, or drag it up onto the page. On the page, drag a photo to move it inside its spot. Press and hold to move it to another spot."));
+    el.append(h("p",{class:"hint"},S.sel.tray?"Now tap a spot on the page. Spots that suit this shape are highlighted.":"Tap a photo, then a spot. On the page: drag to move a photo in its spot, hold to move it elsewhere."));
     const tray=h("div",{class:"tray"});tray.append(h("button",{class:"addph",onclick:()=>input.click()},h("b",{},"+"),"Add photos"));
     for(const ph of wk.photos){const u=used.has(ph.id);const ow=otherWeek(wk,ph);
       tray.append(thumbBtn(ph.id,ph.w,ph.h,{cls:u?"used":"",pressed:S.sel.tray===ph.id,label:`${ph.h>ph.w?"Portrait":"Landscape"} photo${u?", already on a page":""}${ow?`, from week ${ow}`:""}`,drag:!S.trayEdit,
