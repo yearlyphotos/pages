@@ -177,6 +177,15 @@ input[type=range]{accent-color:var(--ink);width:100%;height:32px}
 .tabs.tools .tool.on{background:var(--surface);color:var(--ink)}
 .tabs.tools .msg{color:var(--surface);opacity:.8;font-size:13px;padding:0 6px 0 10px;white-space:nowrap}
 .tabs.tools .rng{flex:1;min-width:120px;accent-color:var(--surface)}
+.cell .thumb{position:relative}
+.cell .todo{position:absolute;left:4px;bottom:4px;background:var(--ink);color:var(--surface);font-size:10px;font-weight:600;border-radius:999px;padding:1px 6px}
+.tabs.tools .msg.lt{display:flex;align-items:center;gap:6px;flex:1;min-width:110px;padding:0 4px 0 8px}
+.album{flex:1;overflow:auto;padding-block:8px 24px}
+.book{display:grid;grid-template-columns:1fr 1fr;gap:3px;background:var(--line);padding:3px;border-radius:4px;box-shadow:0 6px 20px rgba(0,0,0,.12);touch-action:pan-y}
+.leaf{background:#fff;min-width:0}
+.leaf canvas{display:block;width:100%;height:auto;cursor:pointer}
+.leaf.blank{aspect-ratio:1;background:var(--sunk)}
+.leaf .cap{font-size:11px;color:var(--muted);text-align:center;padding:4px 0;background:var(--bg)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>

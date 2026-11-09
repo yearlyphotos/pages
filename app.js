@@ -117,11 +117,11 @@ function cellsOf(pg){const out=[];slotRects(pg.layout,pg.mirror).forEach((r,i)=>
       out.push({key:i+"."+k,i,k,ref:s.subs[k],rect:{x:r.x+x*r.w+(x>0?IG/2:0),y:r.y+y*r.h+(y>0?IG/2:0),w:w*r.w-(w<1?IG/2:0),h:hh*r.h-(hh<1?IG/2:0)}})})}
   else out.push({key:String(i),i,k:null,ref:s,rect:r})});return out}
 const PRESETS=["#F2A36B","#EA8FBF","#7FD4BE","#EDCB63","#8CC8F0","#E2726A","#A9C39A","#B9A3DE"];
-const ADJ0={nx:0,ny:0,ns:1,wx:0,wy:0,ws:1,dx:0,dy:0,ds:1};
+const ADJ0={as:1,nx:0,ny:0,ns:1,wx:0,wy:0,ws:1,dx:0,dy:0,ds:1};
 
 /* ---------- state ---------- */
 const now=isoWeekOf(new Date());
-const S={view:"home",year:now.y,weeks:new Map(),cur:null,pageIdx:0,tab:"photos",sel:{tray:null,cell:null,mode:null,item:null},trayEdit:false,cutEdit:false,cardEdit:false,stkEdit:false,tilePart:"n",library:{stickers:[],cards:[]},
+const S={view:"home",year:now.y,weeks:new Map(),cur:null,pageIdx:0,tab:"photos",sel:{tray:null,cell:null,mode:null,item:null},trayEdit:false,cutEdit:false,cardEdit:false,stkEdit:false,tilePart:"a",library:{stickers:[],cards:[]},
   suggest:[],fonts:{mf:false,mfb:false,script:false},settings:{lang:"en",tileAdj:null},lastBackup:null,dirtySinceBackup:false,loaded:false,offlineReady:false,drop:null};
 function newPage(layout,withTile){const L=LAYOUT[layout];return{layout,mirror:false,slots:L.cells.map(()=>({...emptyRef(),split:null})),tile:withTile?L.tileIdx:null,items:[]}}
 function newWeek(y,w){return{year:y,week:w,pair:null,color:PRESETS[(w-1)%PRESETS.length],dates:null,lang:null,tileAdj:null,photos:[],cuts:[],pages:[newPage("g9",true)],thumb:null}}
@@ -165,7 +165,7 @@ async function addByDate(files){files=[...files];if(!files.length)return;await a
   for(const k of touched){const wk=S.weeks.get(k);wk.photos.sort((a,b)=>(a.t||0)-(b.t||0));await saveNow(wk)}
   pb.close();render();const n=files.length-failed;toast(`Added ${n} photo${n===1?"":"s"} to ${touched.size} week${touched.size===1?"":"s"}.${failed?` ${failed} couldn't be read.`:""}`,4500)}
 async function removePhoto(ph){const wk=curWeek();wk.photos=wk.photos.filter(p=>p.id!==ph.id);wk.pages.forEach(p=>cellsOf(p).forEach(c=>{if(c.ref&&c.ref.p===ph.id)c.ref.p=null}));if(S.sel.tray===ph.id)S.sel.tray=null;
-  await dropBlob(ph.id);commit(wk);renderPanel();drawStage()}
+  if(![...S.weeks.values()].some(w=>w!==wk&&w.photos.some(p=>p.id===ph.id)))await dropBlob(ph.id);commit(wk);renderPanel();drawStage()}
 async function dropBlob(id){await DB.del("photos",id).catch(()=>{});for(const k of[id,"t:"+id]){const u=urlCache.get(k);if(u)URL.revokeObjectURL(u);urlCache.delete(k)}imgCache.delete(id);imgReady.delete(id)}
 
 /* ---------- your fonts (added once from the phone, kept in IndexedDB) ---------- */
@@ -197,7 +197,7 @@ const adjOf=wk=>({...ADJ0,...(wk.tileAdj||S.settings.tileAdj||{})});
 /* rec (optional) receives where the number, the word and the dates were drawn, so they can be dragged */
 function drawTile(ctx,X,Y,W,H,wk,color,rec){
   ctx.save();ctx.beginPath();ctx.rect(X,Y,W,H);ctx.clip();ctx.fillStyle="#fff";ctx.fillRect(X,Y,W,H);
-  const col=color||wk.color,label=numLabel(wk),date=datesOf(wk),word=langOf(wk)==="de"?"Woche":"Week",A=adjOf(wk);const u=Math.min(W,H*1.18);
+  const col=color||wk.color,label=numLabel(wk),date=datesOf(wk),word=langOf(wk)==="de"?"Woche":"Week",A=adjOf(wk);const u=Math.min(W,H*1.18)*(A.as||1);
   ctx.textBaseline="alphabetic";ctx.textAlign="left";ctx.font=`700 100px ${F_NUM}`;const m=ctx.measureText(label);const capR=(m.actualBoundingBoxAscent||72)/100,wR=m.width/100;
   let fs0=0.30*u/capR;if(wR*fs0>0.86*W)fs0=0.86*W/wR;const capH0=capR*fs0,numW0=wR*fs0;
   const ds0=0.046*u,bandH0=0.074*u,gap=0.026*u;const top=Y+(H-(capH0+gap+bandH0))/2,cx=X+W/2;
@@ -251,7 +251,8 @@ function reanchor(it,pg){const p=itemPos(it,pg);it.x=p.x;it.y=p.y;const c=cellsO
 /* ---------- page drawing ---------- */
 const boxes=new Map();let tileRec=null;const INK="#23201E";
 function drawCover(ctx,im,X,Y,W,H,s){const sc=Math.max(W/im.naturalWidth,H/im.naturalHeight)*(s.z||1);const dw=im.naturalWidth*sc,dh=im.naturalHeight*sc;
-  ctx.save();ctx.beginPath();ctx.rect(X,Y,W,H);ctx.clip();ctx.drawImage(im,X-(dw-W)*s.fx,Y-(dh-H)*s.fy,dw,dh);ctx.restore()}
+  ctx.save();ctx.beginPath();ctx.rect(X,Y,W,H);ctx.clip();if(s.b)ctx.filter=`brightness(${(1+s.b*0.6).toFixed(3)})`;ctx.drawImage(im,X-(dw-W)*s.fx,Y-(dh-H)*s.fy,dw,dh);ctx.filter="none";
+  if(s.w){ctx.globalCompositeOperation="soft-light";ctx.globalAlpha=Math.min(1,Math.abs(s.w)*0.55);ctx.fillStyle=s.w>0?"#FF8A2B":"#2B7BFF";ctx.fillRect(X,Y,W,H)}ctx.restore()}
 function fits(ph,r){if(!ph)return true;const pr=ph.h/ph.w,sr=r.h/r.w;return Math.abs(Math.log(pr/sr))<0.45}
 function drawPage(ctx,size,wk,pg,o={}){ctx.save();ctx.fillStyle="#fff";ctx.fillRect(0,0,size,size);const sel=S.sel;const trayPh=o.preview&&sel.tray?photoMeta(wk,sel.tray):null;
   if(o.preview)tileRec=null;
@@ -266,7 +267,7 @@ function drawPage(ctx,size,wk,pg,o={}){ctx.save();ctx.fillStyle="#fff";ctx.fillR
   if(o.preview){const lw=Math.max(3,size*.009);
     const cl=cellsOf(pg);const sc=sel.cell!=null&&cl.find(c=>c.key===sel.cell);
     if(sc){const r=sc.rect;ctx.strokeStyle=wk.color;ctx.lineWidth=lw;ctx.strokeRect(r.x*size+lw/2,r.y*size+lw/2,r.w*size-lw,r.h*size-lw);
-      if(sc.tile&&tileRec&&S.tilePart){const b=tileRec[S.tilePart==="w"?"word":S.tilePart==="d"?"date":"num"];if(b){ctx.save();ctx.strokeStyle="rgba(0,0,0,.45)";ctx.lineWidth=1.5;ctx.setLineDash([5,4]);ctx.strokeRect(b.x-3,b.y-3,b.w+6,b.h+6);ctx.restore()}}}
+      if(sc.tile&&tileRec&&S.tilePart&&S.tilePart!=="a"){const b=tileRec[S.tilePart==="w"?"word":S.tilePart==="d"?"date":"num"];if(b){ctx.save();ctx.strokeStyle="rgba(0,0,0,.45)";ctx.lineWidth=1.5;ctx.setLineDash([5,4]);ctx.strokeRect(b.x-3,b.y-3,b.w+6,b.h+6);ctx.restore()}}}
     const dc=S.drop&&cl.find(c=>c.key===S.drop);if(dc){const r=dc.rect;ctx.strokeStyle=INK;ctx.lineWidth=lw*1.3;ctx.strokeRect(r.x*size+lw/2,r.y*size+lw/2,r.w*size-lw,r.h*size-lw)}
     if(sel.item){const it=pg.items.find(t=>t.id===sel.item);const b=it&&boxes.get(it.id);if(b){const p=itemPos(it,pg);ctx.save();ctx.translate(p.x*size,p.y*size);ctx.rotate((it.r||0)*Math.PI/180);ctx.strokeStyle=wk.color;ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.strokeRect(-b.hw*size,-b.hh*size,b.hw*2*size,b.hh*2*size);ctx.restore()}}}
   ctx.restore()}
@@ -380,6 +381,43 @@ async function importPL(files){files=[...files];if(!files.length)return;await as
   pb.close();render();
   let msg=done.length?`Imported ${done.join(", ")}.`:"Nothing was imported.";if(unknown.length)msg+=` ${unknown.length} page${unknown.length===1?" uses":"s use"} a design the app doesn't know yet, so check how the photos are arranged.`;if(failed.length)msg+=` ${failed.length} file${failed.length===1?"":"s"} couldn't be read.`;
   toast(msg,6000)}
+
+/* ---------- share a page and move a page ---------- */
+const canShare=()=>{try{return!!(navigator.share&&navigator.canShare&&navigator.canShare({files:[new File([new Blob(["x"],{type:"image/jpeg"})],"t.jpg",{type:"image/jpeg"})]}))}catch(e){return false}};
+async function sharePage(wk,i){toast("Getting the page ready…",0);try{const b=await renderFull(wk,i,2400);const f=new File([b],`${wk.year} ${pageName(wk,i)}.jpg`,{type:"image/jpeg"});$(".toast")?.remove();
+    await navigator.share({files:[f],title:pageName(wk,i)})}catch(e){$(".toast")?.remove();if(e&&e.name==="AbortError")return;toast("Couldn't share the page. Download it instead.",4000)}}
+async function movePage(wk,i,tw){const pg=wk.pages[i];let y=wk.year;const prev=S.weeks.get(keyOf(y,tw-1)),next=S.weeks.get(keyOf(y,tw+1));if(prev&&prev.pair===1)tw--;else if(next&&next.pair===-1)tw++;
+  const k=keyOf(y,tw);const target=S.weeks.get(k)||newWeek(y,tw);const replace=target.pages.length===1&&!hasContent(target);
+  if(!await confirmBox(`Move ${pageName(wk,i)} to week ${numLabel(target)}?`,replace?`It becomes the first page of week ${numLabel(target)}.`:`It's added as an extra page to week ${numLabel(target)}.`,"Move"))return;
+  const used=new Set();cellsOf(pg).forEach(c=>c.ref&&c.ref.p&&used.add(c.ref.p));pg.items.forEach(it=>it.type==="cut"&&used.add(it.c));
+  const others=new Set();wk.pages.forEach((p,j)=>{if(j===i)return;cellsOf(p).forEach(c=>c.ref&&c.ref.p&&others.add(c.ref.p));p.items.forEach(it=>it.type==="cut"&&others.add(it.c))});
+  for(const list of["photos","cuts"]){for(const m of wk[list].filter(m=>used.has(m.id))){if(!target[list].some(x=>x.id===m.id))target[list].push({...m});if(!others.has(m.id))wk[list]=wk[list].filter(x=>x.id!==m.id)}}
+  target.photos.sort((a,b)=>(a.t||0)-(b.t||0));
+  wk.pages.splice(i,1);if(!wk.pages.length)wk.pages.push(newPage("g9",true));
+  let idx;if(replace){target.pages[0]=pg;idx=0}else{target.pages.push(pg);idx=target.pages.length-1}
+  S.weeks.set(k,target);await saveNow(wk);await saveNow(target);
+  history.replaceState({home:1},"");openWeek(y,tw,true);history.pushState({w:k},"");S.pageIdx=idx;render();toast(`Moved to ${pageName(target,idx)}`,3000)}
+
+/* ---------- album view: pages two at a time, as in the printed album ---------- */
+function albumPages(){const out=[];for(const wk of[...S.weeks.values()].filter(w=>w.year===S.year).sort((a,b)=>a.week-b.week))wk.pages.forEach((pg,i)=>{if(hasContent({pages:[pg]}))out.push({wk,i})});return out}
+function openAlbum(){S.view="album";S.albumIdx=S.albumIdx||0;history.pushState({album:1},"");render()}
+function renderAlbum(){const list=albumPages();const first=!!S.settings.albumRight;const spreads=[];let k=0;if(first&&list.length)spreads.push([null,list[k++]]);while(k<list.length){spreads.push([list[k],list[k+1]||null]);k+=2}
+  S.albumIdx=clamp(S.albumIdx||0,0,Math.max(0,spreads.length-1));const sp=spreads[S.albumIdx]||[null,null];
+  app.append(h("header",{class:"top slim"},h("button",{class:"iconbtn sm","aria-label":"Back to all weeks",onclick:()=>history.back()},"‹"),h("div",{class:"grow"},h("h1",{},`Album ${S.year}`),h("span",{class:"sub"},spreads.length?`Spread ${S.albumIdx+1} of ${spreads.length}`:"No pages yet"))));
+  const main=h("main",{class:"album"});app.append(main);
+  if(!spreads.length){main.append(h("p",{class:"hint"},"Finished pages show up here two at a time, the way they'll sit next to each other in your printed album."));return}
+  const book=h("div",{class:"book"});main.append(book);
+  const side=(j)=>{const cell=h("div",{class:"leaf"});if(!j){cell.classList.add("blank");return cell}const c=cv(10,10);cell.append(c,h("div",{class:"cap"},pageName(j.wk,j.i)));
+    c.addEventListener("click",()=>{openWeek(j.wk.year,j.wk.week);S.pageIdx=j.i;render()});
+    requestAnimationFrame(async()=>{const css=Math.floor(cell.getBoundingClientRect().width);const dpr=Math.min(2.5,window.devicePixelRatio||1);c.width=c.height=Math.max(10,Math.round(css*dpr));c.style.width=c.style.height=css+"px";
+      await ensureImages([j.wk.pages[j.i]]);drawPage(c.getContext("2d"),c.width,j.wk,j.wk.pages[j.i])});return cell};
+  book.append(side(sp[0]),side(sp[1]));
+  let x0=null;book.addEventListener("pointerdown",e=>{x0=e.clientX});book.addEventListener("pointerup",e=>{if(x0==null)return;const dx=e.clientX-x0;x0=null;if(Math.abs(dx)>50){S.albumIdx+=dx<0?1:-1;render()}});
+  main.append(h("div",{class:"row",style:"justify-content:space-between;margin-top:14px"},
+    h("button",{class:"btn ghost",disabled:S.albumIdx<=0,onclick:()=>{S.albumIdx--;render()}},"‹ Previous"),
+    h("button",{class:"btn ghost",disabled:S.albumIdx>=spreads.length-1,onclick:()=>{S.albumIdx++;render()}},"Next ›")),
+    h("label",{class:"toggle",style:"margin-top:10px"},h("input",{type:"checkbox",id:"albumRight",checked:first,onchange:e=>{S.settings.albumRight=e.target.checked;saveSettings();S.albumIdx=0;render()}}),"The first page sits on the right, as in most albums"),
+    h("p",{class:"hint"},"Tap a page to edit it. Swipe left or right to turn the page."))}
 /* ---------- export images ---------- */
 async function renderFull(wk,i,size=3600){await document.fonts.ready;await ensureImages([wk.pages[i]]);const c=cv(size,size);drawPage(c.getContext("2d"),size,wk,wk.pages[i]);
   const b=await toBlob(c,"image/jpeg",.92);c.width=c.height=1;return b}
@@ -397,7 +435,7 @@ async function exportRange(a,b){if(a>b)[a,b]=[b,a];await flushSaves();const list
 
 /* ---------- home ---------- */
 const app=$("#app");
-function render(){app.innerHTML="";if(S.view==="home")renderHome();else renderEditor()}
+function render(){app.innerHTML="";if(S.view==="home")renderHome();else if(S.view==="album")renderAlbum();else renderEditor()}
 function tileThumb(wk,colr){const c=cv(220,220);c.setAttribute("aria-hidden","true");const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,220,220);drawTile(x,0,0,220,220,wk,colr);return c}
 function ago(t){if(!t)return"never";const d=Math.floor((Date.now()-t)/864e5);return d<1?"today":d===1?"yesterday":`${d} days ago`}
 const seg=(opts,cur,on)=>h("div",{class:"seg"},opts.map(([v,l,dis])=>h("button",{"aria-pressed":String(cur===v),disabled:!!dis,onclick:()=>on(v)},l)));
@@ -410,12 +448,14 @@ function renderHome(){const y=S.year,n=weeksInYear(y);document.documentElement.s
   if(S.loaded&&S.weeks.size&&S.dirtySinceBackup&&(!S.lastBackup||Date.now()-S.lastBackup>7*864e5))home.append(h("div",{class:"banner warn"},`Last backup: ${ago(S.lastBackup)}. `,h("a",{href:"#backup",style:"color:inherit;font-weight:600"},"Back up now")));
   const byDate=h("input",{type:"file",accept:"image/*",multiple:true,hidden:true,id:"byDateIn",onchange:e=>{const fs=[...e.target.files];e.target.value="";addByDate(fs)}});
   home.append(h("div",{class:"stack",style:"margin-bottom:6px"},y===now.y?h("button",{class:"btn wide",onclick:()=>openWeek(now.y,now.w)},`Open this week (week ${now.w})`):null,
-    h("button",{class:"btn ghost wide",onclick:()=>byDate.click()},"Add photos to several weeks"),byDate));
+    h("button",{class:"btn ghost wide",onclick:()=>byDate.click()},"Add photos to several weeks"),byDate,h("button",{class:"btn ghost wide",onclick:openAlbum},"Album view")));
   const g=h("div",{class:"grid"});home.append(g);let lastM=-1;
   for(let w=1;w<=n;w++){const prev=S.weeks.get(keyOf(y,w-1)),next=S.weeks.get(keyOf(y,w+1));if((prev&&prev.pair===1)||(next&&next.pair===-1))continue;
     const m=weekStart(y,w);m.setUTCDate(m.getUTCDate()+3);const mo=m.getUTCMonth();if(mo!==lastM){g.append(h("div",{class:"month"},MONTHS.en[mo]));lastM=mo}
     const wk=S.weeks.get(keyOf(y,w));const has=hasContent(wk);const waiting=wk&&!has&&wk.photos.length;const th=h("span",{class:"thumb"});
     if(has&&wk.thumb)th.append(h("img",{src:wk.thumb,alt:""}));else th.append(tileThumb(wk||newWeek(y,w),has?null:"#CFC9C2"));
+    const todo=has&&wk.pages.some(pg=>hasContent({pages:[pg]})&&cellsOf(pg).some(c=>!c.tile&&!(c.ref.p&&photoMeta(wk,c.ref.p))));
+    if(todo)th.append(h("span",{class:"todo"},"to finish"));
     g.append(h("button",{class:"cell"+(has?"":" empty")+(y===now.y&&w===now.w?" now":""),onclick:()=>openWeek(y,w),"aria-label":`Week ${wk?numLabel(wk):w}`},th,
       h("span",{class:"lab"},h("b",{},`Week ${wk?numLabel(wk):w}`),wk&&wk.pages.length>1&&has?` · ${wk.pages.length} pages`:"",waiting?` · ${wk.photos.length} new`:"")))}
   const from=h("select",{id:"exFrom","aria-label":"From week"}),to=h("select",{id:"exTo","aria-label":"To week"});
@@ -441,7 +481,7 @@ function renderHome(){const y=S.year,n=weeksInYear(y);document.documentElement.s
 function openWeek(y,w,noHist){const k=keyOf(y,w);if(!S.weeks.has(k))S.weeks.set(k,newWeek(y,w));S.cur=k;S.pageIdx=0;S.view="edit";S.sel={tray:null,cell:null,mode:null,item:null};S.tab="photos";S.trayEdit=false;S.cutEdit=false;S.cardEdit=false;S.stkEdit=false;S.pickCut=false;S.suggest=[];
   if(!noHist)history.pushState({w:k},"");const wk=curWeek();[...wk.photos.map(p=>p.id),...wk.cuts.map(c=>c.id)].forEach(id=>loadImg(id).then(()=>{refreshSuggest();cutCache.clear();drawStage()}).catch(()=>{}));ensureImages(wk.pages).then(()=>{cutCache.clear();drawStage()});render();resetUndo()}
 function goHome(){const wk=curWeek();if(wk)scheduleSave(wk,true);S.view="home";render()}
-window.addEventListener("popstate",()=>{if(S.skipPop){S.skipPop=false;return}if($(".trace")){$(".trace").remove();return}if(S.view==="edit")goHome()});
+window.addEventListener("popstate",()=>{if(S.skipPop){S.skipPop=false;return}if($(".trace")){$(".trace").remove();return}if(S.view==="edit")goHome();else if(S.view==="album"){S.view="home";render()}});
 
 /* ---------- editor ---------- */
 let cvs=null,ctx=null,ro=null;
@@ -471,14 +511,16 @@ function renderTabs(){const t=$("#tabs");if(!t)return;t.innerHTML="";t.className
   if(sel.mode==="split"&&c){t.className="tabs tools";const cur=pg.slots[c.i].split;t.append(h("span",{class:"msg"},"Split:"));
     for(const[v,l,a]of[[null,"Whole","Whole spot"],["h2","2 side by side"],["v2","2 stacked"],["g4","4"]])t.append(tool(l,()=>setSplit(c.i,v),cur===v,a));t.append(tool("✕",clearSel,false,"Close"));return}
   if(c){t.className="tabs tools";
-    if(S.slider&&S.sliderKey===sel.cell){const isTile=c.tile;const k=isTile?PART_KEYS[S.tilePart||"n"][2]:null;const val=isTile?adjOf(wk)[k]:(c.ref.z||1);
+    if(S.light&&S.sliderKey===sel.cell&&c.ref&&c.ref.p){const rng=(k,l)=>h("label",{class:"msg lt"},l,h("input",{type:"range",class:"rng",min:"-1",max:"1",step:"0.02",value:String(c.ref[k]||0),"aria-label":l,oninput:e=>{c.ref[k]=+e.target.value;drawStage()},onchange:()=>commit(wk)}));
+      t.append(rng("b","Light"),rng("w","Warm"),tool("Done",()=>{S.light=false;renderTabs()},true));return}
+    if(S.slider&&S.sliderKey===sel.cell){const isTile=c.tile;const k=isTile?(S.tilePart&&S.tilePart!=="a"?PART_KEYS[S.tilePart][2]:"as"):null;const val=isTile?adjOf(wk)[k]:(c.ref.z||1);
       t.append(h("span",{class:"msg"},isTile?"Size":"Zoom"),h("input",{type:"range",class:"rng",min:isTile?"0.5":"1",max:isTile?"1.8":"2.5",step:"0.01",value:String(val),"aria-label":isTile?"Size":"Zoom",
         oninput:e=>{if(isTile)wk.tileAdj={...adjOf(wk),[k]:+e.target.value};else c.ref.z=+e.target.value;drawStage()},onchange:()=>commit(wk)}),tool("Done",()=>{S.slider=false;renderTabs()},true));return}
     const openSlider=()=>{S.slider=true;S.sliderKey=sel.cell;renderTabs()};
-    if(c.tile){const P=S.tilePart||"n";
-      for(const[v,l]of[["n","Number"],["w",langOf(wk)==="de"?"Woche":"Week"],["d","Dates"]])t.append(tool(l,()=>{S.tilePart=v;renderTabs();drawStage()},P===v));
+    if(c.tile){const P=S.tilePart||"a";
+      for(const[v,l]of[["a","All"],["n","Number"],["w",langOf(wk)==="de"?"Woche":"Week"],["d","Dates"]])t.append(tool(l,()=>{S.tilePart=v;renderTabs();drawStage()},P===v));
       t.append(tool("Size",openSlider),tool("Reset",()=>{wk.tileAdj=null;commit(wk);drawStage()}),tool("Move",()=>{S.sel.mode="swap";renderTabs()}),tool("Hide",()=>{pg.tile=null;commit(wk);clearSel();renderPanel()},false,"Hide the week tile"),tool("✕",clearSel,false,"Close"));return}
-    if(c.ref.p)t.append(tool("Zoom",openSlider));
+    if(c.ref.p)t.append(tool("Zoom",openSlider),tool("Light",()=>{S.light=true;S.sliderKey=sel.cell;renderTabs()}));
     t.append(tool("Split",()=>{S.sel.mode="split";renderTabs()}));
     if(c.ref.p)t.append(tool("Swap",()=>{S.sel.mode="swap";renderTabs()}));
     if(c.k==null)t.append(tool("Tile here",()=>moveTile(c.i)));
@@ -492,13 +534,13 @@ let raf=0;function drawStage(){if(!cvs||S.view!=="edit")return;cancelAnimationFr
 const cellByKey=key=>cellsOf(curPage()).find(c=>c.key===key);
 const PART_KEYS={n:["nx","ny","ns"],w:["wx","wy","ws"],d:["dx","dy","ds"]};
 function renderSlotbar(){renderTabs()}
-function clearSel(){S.sel.cell=null;S.sel.mode=null;S.slider=false;renderTabs();drawStage()}
+function clearSel(){S.sel.cell=null;S.sel.mode=null;S.slider=false;S.light=false;renderTabs();drawStage()}
 function moveTile(i){const pg=curPage(),wk=curWeek();const old=pg.tile;if(old!=null&&old!==i){const a=pg.slots[old];pg.slots[old]=pg.slots[i];pg.slots[i]=a}pg.tile=i;S.sel.cell=null;S.sel.mode=null;commit(wk);renderSlotbar();renderPanel();drawStage()}
-function placePhoto(c,id){const wk=curWeek();if(c.tile)return toast("That spot holds the week tile. Swap it first.");Object.assign(c.ref,{p:id,fx:.5,fy:.5,z:1});S.sel.tray=null;commit(wk);renderPanel();refreshSuggest();drawStage()}
+function placePhoto(c,id){const wk=curWeek();if(c.tile)return toast("That spot holds the week tile. Swap it first.");Object.assign(c.ref,{p:id,fx:.5,fy:.5,z:1,b:0,w:0});S.sel.tray=null;commit(wk);renderPanel();refreshSuggest();drawStage()}
 function swapCells(a,b){const wk=curWeek();if(a.key===b.key)return;
   if(a.tile||b.tile){if(a.k!=null||b.k!=null)return toast("The week tile needs a whole spot.");moveTile(a.tile?b.i:a.i);return}
-  for(const f of["p","fx","fy","z"]){const t=a.ref[f];a.ref[f]=b.ref[f];b.ref[f]=t}commit(wk);drawStage()}
-function setSplit(i,mode){const pg=curPage(),wk=curWeek();const s=pg.slots[i];const photos=(s.split?s.subs:[s]).filter(x=>x&&x.p).map(x=>({p:x.p,fx:x.fx,fy:x.fy,z:x.z}));
+  for(const f of["p","fx","fy","z","b","w"]){const t=a.ref[f];a.ref[f]=b.ref[f];b.ref[f]=t}commit(wk);drawStage()}
+function setSplit(i,mode){const pg=curPage(),wk=curWeek();const s=pg.slots[i];const photos=(s.split?s.subs:[s]).filter(x=>x&&x.p).map(x=>({p:x.p,fx:x.fx,fy:x.fy,z:x.z,b:x.b||0,w:x.w||0}));
   const n=mode?SPLITS[mode].length:1;if(!mode)pg.slots[i]={...(photos[0]||emptyRef()),split:null};else pg.slots[i]={...emptyRef(),split:mode,subs:SPLITS[mode].map((_,k)=>photos[k]?{...photos[k],fx:.5,fy:.5,z:1}:emptyRef())};
   if(photos.length>n)toast(`${photos.length-n} photo${photos.length-n===1?"":"s"} went back to the tray`);S.sel.cell=mode?i+".0":String(i);S.sel.mode=null;commit(wk);renderSlotbar();renderPanel();drawStage()}
 
@@ -526,7 +568,7 @@ function bindCanvas(){const ptrs=new Map();let g=null,ghost=null,timer=0;
     const it=hitItem(p);if(it){selectItem(it);const q=itemPos(it,pg);g={kind:"item",it,ox:q.x-p.x,oy:q.y-p.y,moved:false};drawStage();return}
     const c=hitCell(p);if(!c){S.sel.item=null;clearSel();renderPanel();g=null;return}
     g={c,start:p,last:p,cx:e.clientX,cy:e.clientY,lx:e.clientX,ly:e.clientY};
-    if(c.tile){g.kind="tpress";g.part=hitTilePart(p);g.adj0=adjOf(wk);g.u=tileRec?tileRec.u/tileRec.size:.25;timer=setTimeout(startDrag,450)}
+    if(c.tile){g.kind="tpress";g.part=(S.sel.cell===c.key&&S.tilePart&&S.tilePart!=="a")?S.tilePart:null;g.adj0=adjOf(wk);g.u=tileRec?tileRec.u/tileRec.size:.25;timer=setTimeout(startDrag,450)}
     else if(c.ref.p){g.kind="press";timer=setTimeout(startDrag,450)}
     else g.kind="tap"});
   cvs.addEventListener("pointermove",e=>{if(!ptrs.has(e.pointerId))return;const p=pt(e);ptrs.set(e.pointerId,p);if(!g)return;const pg=curPage(),wk=curWeek();g.lx=e.clientX;g.ly=e.clientY;
@@ -534,7 +576,7 @@ function bindCanvas(){const ptrs=new Map();let g=null,ghost=null,timer=0;
     if(g.kind==="pinch"&&ptrs.size>=2){const t=two();g.it.s=clamp(g.s0*t.d/g.d0,.02,.8);g.it.r=Math.round((g.r0+(t.a-g.a0)*180/Math.PI+540)%360-180);drawStage();return}
     if(g.kind==="item"){const q=itemPos(g.it,pg);if(!g.moved&&Math.hypot(p.x+g.ox-q.x,p.y+g.oy-q.y)<.005)return;g.moved=true;g.it.a=null;g.it.x=clamp(p.x+g.ox,0,1);g.it.y=clamp(p.y+g.oy,0,1);drawStage();return}
     if(g.kind==="press"&&moved){stopTimer();g.kind="pan";S.sel.cell=g.c.key;renderSlotbar()}
-    if(g.kind==="tpress"&&moved){stopTimer();g.kind="tdrag";S.sel.cell=g.c.key;S.tilePart=g.part||S.tilePart||"n";renderSlotbar()}
+    if(g.kind==="tpress"&&moved){stopTimer();g.kind="tdrag";S.sel.cell=g.c.key;renderSlotbar()}
     if(g.kind==="pan"){const ref=g.c.ref;const im=imgReady.get(ref.p);if(!im)return;const r=g.c.rect;const sc=Math.max(r.w/im.naturalWidth,r.h/im.naturalHeight)*(ref.z||1);
       const ovx=im.naturalWidth*sc-r.w,ovy=im.naturalHeight*sc-r.h;if(ovx>1e-6)ref.fx=clamp(ref.fx-(p.x-g.last.x)/ovx,0,1);if(ovy>1e-6)ref.fy=clamp(ref.fy-(p.y-g.last.y)/ovy,0,1);g.last=p;drawStage()}
     else if(g.kind==="tdrag"){const dx=(p.x-g.start.x)/g.u,dy=(p.y-g.start.y)/g.u;const A={...g.adj0};const parts=g.part?[g.part]:["n","w","d"];
@@ -544,7 +586,7 @@ function bindCanvas(){const ptrs=new Map();let g=null,ghost=null,timer=0;
     if(g.kind==="pinch"){if(ptrs.size<2){reanchor(g.it,pg);commit(wk);renderPanel();g=null}return}
     if(g.kind==="item"){if(g.moved){reanchor(g.it,pg);commit(wk)}}
     else if(g.kind==="pan"||g.kind==="tdrag")commit(wk);
-    else if(g.kind==="press"||g.kind==="tap"||g.kind==="tpress"){S.sel.item=null;S.sel.cell=g.c.key;S.sel.mode=null;if(g.kind==="tpress")S.tilePart=g.part||S.tilePart||"n";renderSlotbar();if(S.tab==="text"||S.tab==="stickers")renderPanel();drawStage()}
+    else if(g.kind==="press"||g.kind==="tap"||g.kind==="tpress"){S.sel.item=null;S.sel.cell=g.c.key;S.sel.mode=null;renderSlotbar();if(S.tab==="text"||S.tab==="stickers")renderPanel();drawStage()}
     else if(g.kind==="drag"){ghost?.remove();ghost=null;S.drop=null;const t=hitCell(p);if(t)swapCells(g.c,t);drawStage()}
     g=null};
   cvs.addEventListener("pointerup",up);cvs.addEventListener("pointercancel",e=>{ptrs.delete(e.pointerId);stopTimer();ghost?.remove();ghost=null;S.drop=null;if(g&&(g.kind==="item"||g.kind==="pinch")){reanchor(g.it,curPage());commit(curWeek())}else if(g&&(g.kind==="pan"||g.kind==="tdrag"))commit(curWeek());g=null;drawStage()});
@@ -714,7 +756,7 @@ function renderPanel(){const el=$("#panel");if(!el)return;const top=el.scrollTop
     const[a,b]=span(wk);const auto=dateLabel(wk.year,a,b,langOf(wk));
     el.append(h("div",{class:"lbl"},"Dates"),h("div",{class:"row"},h("input",{type:"text",id:"dates",style:"flex:1;min-width:0",value:wk.dates||auto,"aria-label":"Dates under the number",oninput:e=>{const v=e.target.value.trim();wk.dates=v&&v!==auto?e.target.value:null;drawStage();commit(wk,false,true)}}),
       wk.dates?h("button",{class:"btn ghost",onclick:()=>{wk.dates=null;commit(wk);renderPanel();drawStage()}},"Reset"):null));
-    el.append(h("div",{class:"lbl"},"Arrange the tile"),h("p",{class:"hint"},"Drag the number, the word or the dates on the tile to move them. Tap the tile to change their sizes."),
+    el.append(h("div",{class:"lbl"},"Arrange the tile"),h("p",{class:"hint"},"Drag the tile to move the number, the word and the dates together, and tap it to change the size of all three. To adjust only one part, tap the tile and pick Number, Week or Dates first."),
       h("div",{class:"row"},h("button",{class:"btn ghost",onclick:()=>{wk.tileAdj=null;commit(wk);renderPanel();drawStage()}},"Reset"),
         h("button",{class:"btn ghost",onclick:()=>{S.settings.tileAdj={...adjOf(wk)};saveSettings();wk.tileAdj=null;commit(wk);renderPanel();drawStage();toast("Saved as the default. Weeks you haven't arranged follow it.",3500)}},"Make this my default")));
     const n=weeksInYear(wk.year);const pk=keyOf(wk.year,wk.week-1),nk=keyOf(wk.year,wk.week+1);
@@ -753,8 +795,13 @@ function renderPanel(){const el=$("#panel");if(!el)return;const top=el.scrollTop
     el.append(h("label",{class:"toggle",style:"margin-top:12px"},h("input",{type:"checkbox",id:"shadow",checked:shadowOn(),onchange:e=>{S.settings.shadow=e.target.checked;saveSettings();textCache.clear();cutCache.clear();drawStage()}}),"Small shadow under stickers and text"))}
   else if(S.tab==="save"){el.append(h("p",{class:"hint"},`Saves this page as a 12 × 12 inch print file (3600 × 3600 pixels) named “${wk.year} ${pageName(wk,S.pageIdx)}.jpg” in your Downloads.`),
       h("div",{class:"stack"},h("button",{class:"btn wide",onclick:()=>exportOne(wk,S.pageIdx)},"Download this page"),h("button",{class:"btn ghost wide",onclick:()=>exportTile(wk)},"Download week tile"),
+        canShare()?h("button",{class:"btn ghost wide",onclick:()=>sharePage(wk,S.pageIdx)},"Share this page"):null,
         h("button",{class:"btn ghost wide",onclick:()=>saveWeekFile(wk)},"Save this week as a file")),
       h("p",{class:"hint",style:"margin-top:8px"},"A week file keeps every page editable. Load it again on the start page under Backup."));
+    {const n=weeksInYear(wk.year);const[a0,b0]=span(wk);const sel=h("select",{id:"moveTo","aria-label":"Move to week"});
+      for(let w=1;w<=n;w++){if(w>=a0&&w<=b0)continue;sel.append(h("option",{value:w},`Week ${w}`))}sel.value=String(Math.min(n,b0+1));
+      el.append(h("div",{class:"lbl"},"Move this page"),h("p",{class:"hint"},"Moves this page and its photos to another week. If that week is still empty, it becomes its first page."),
+        h("div",{class:"row"},sel,h("button",{class:"btn ghost",onclick:()=>movePage(wk,S.pageIdx,+sel.value)},"Move")))}
     if(wk.pages.length>1)el.append(h("button",{class:"btn ghost wide",style:"margin-top:14px;color:var(--danger)",onclick:async()=>{if(!await confirmBox("Delete this page?","The photos stay in this week's tray.","Delete",true))return;wk.pages.splice(S.pageIdx,1);S.pageIdx=Math.max(0,S.pageIdx-1);commit(wk);render()}},"Delete this page"))}
   el.scrollTop=top}
 function renderEditorHead(){const wk=curWeek();const t=$(".top h1"),s=$(".top .sub");if(t)t.textContent=`Week ${numLabel(wk)}`;if(s)s.textContent=datesOf(wk)}
